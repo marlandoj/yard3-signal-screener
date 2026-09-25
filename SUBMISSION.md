@@ -88,10 +88,13 @@ fully without them.
 
 ### Video composition disclosure
 
-The first render attempt failed with `MOVIO_PAYMENT_INSUFFICIENT_CREDIT` — the HeyGen
-wallet had no API credit available at the moment of submission, and the local 40-minute
-`--wait` expired before the terminal status was read, so the log reported a timeout
-rather than the real cause. The wallet was recharged and the render re-run.
+Rendering first went through HeyGen's `video-agent` endpoint and did not complete:
+three jobs (`174e5dfda…`, `f74ecab7…`, `eadf4c11…`) each reached a terminal `failed`
+state on the provider side, and because the local `--wait` poll returned before the
+terminal status was readable, the client log recorded a timeout rather than the real
+outcome. The fix was to stop using `video-agent` and submit the full script as one
+avatar render through HeyGen's standard avatar video endpoint (`e6c18af7…`), which
+completed in 4m37s and returned 136.8 s of footage. No wallet top-up was required.
 
 The walkthrough now composites a **lip-synced talking-head avatar** (lower right,
 ring-bordered, captioned) over the live capture, driven by the HeyGen voiceover.
