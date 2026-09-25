@@ -15,7 +15,7 @@ TapeScope is a one-screen, explainable stock screener for a focused watchlist. I
 ## Compliance notes
 
 - Single primary decision surface: inspect and filter signals.
-- Original implementation; JHF was used only as a product reference.
+- Original implementation. No third-party code, data pipeline, or branding was reused.
 - Public repository includes source, license, tests, and submission artifacts.
 - No brokerage connection, order entry, or trading automation.
 - Reference data is clearly labeled; live public delayed data is used when available.

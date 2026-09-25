@@ -4,6 +4,7 @@
 **Repo:** https://github.com/marlandoj/yard3-signal-screener
 **Demo (live):** https://yard3-signal-screener-live-marlandoj.zocomputer.io
 **Walkthrough video:** https://github.com/marlandoj/yard3-signal-screener/raw/main/submission/tapescope-walkthrough.mp4
+**Screenshot gallery (public):** https://marlandoj.zo.space/tapescope
 (`submission/tapescope-walkthrough.mp4` · 156 s · 1080p · 12.5 MB)
 
 ---
