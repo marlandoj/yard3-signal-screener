@@ -15,6 +15,8 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Star,
+  TrendingUp,
   X
 } from "lucide-react";
 import {
@@ -26,7 +28,34 @@ import {
   type SortKey,
   type StockSnapshot
 } from "./lib/market";
+import {
+  BENCHMARK_SYMBOL,
+  SCENARIO_MOVES,
+  buildScenario,
+  computeRelativeStrength,
+  invalidationLevels,
+  type RelativeStrength
+} from "./lib/analysis";
 import "./styles.css";
+
+const WATCHLIST_KEY = "tapescope.watchlist.v1";
+const RECIPIENT_KEY = "tapescope.recipient.v1";
+
+function readStored(key: string, fallback: string) {
+  try { return window.localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+
+function writeStored(key: string, value: string) {
+  try { window.localStorage.setItem(key, value); } catch { /* private mode: degrade to session state */ }
+}
+
+function readWatchlist(): string[] {
+  try {
+    const raw = window.localStorage.getItem(WATCHLIST_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch { return []; }
+}
 
 const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -91,28 +120,78 @@ function VehicleSummary({ stocks }: { stocks: StockSnapshot[] }) {
   </section>;
 }
 
-function StockRow({ stock, selected, onSelect, onSort }: { stock: StockSnapshot; selected: boolean; onSelect: () => void; onSort: (key: SortKey) => void }) {
+function RelativeStrengthCell({ entry }: { entry?: RelativeStrength }) {
+  if (!entry) return <td className="numeric mobile-hide"><span className="muted-value">—</span></td>;
+  const positive = entry.excessReturn >= 0;
+  return <td className="numeric mobile-hide" title={`${entry.instrumentReturn.toFixed(2)}% vs ${entry.benchmarkReturn.toFixed(2)}% ${BENCHMARK_SYMBOL} over ${entry.windowBars} bars`}>
+    <span className={`rs ${positive ? "positive" : "negative"}`}><TrendingUp size={12} aria-hidden="true" />{positive ? "+" : ""}{entry.excessReturn.toFixed(1)}pp</span>
+  </td>;
+}
+
+function ScenarioPlanner({ stock }: { stock: StockSnapshot }) {
+  const rows = buildScenario(stock);
+  const levels = invalidationLevels(stock);
+  return <div className="scenario-block">
+    <div className="scenario-head"><span className="eyebrow">Scenario planner</span><small>Recomputed from the same score model</small></div>
+    <div className="scenario-grid" role="table" aria-label={`Projected score for ${stock.symbol}`}>
+      {rows.map((row) => <div className={`scenario-cell ${row.movePercent === 0 ? "base" : ""}`} key={row.movePercent} role="cell">
+        <span className="scenario-move">{row.movePercent > 0 ? "+" : ""}{row.movePercent}%</span>
+        <strong>{row.score}</strong>
+        <small>{row.signal}</small>
+        {row.movePercent !== 0 && <em className={row.delta >= 0 ? "positive" : "negative"}>{row.delta > 0 ? "+" : ""}{row.delta}</em>}
+        {row.movePercent === 0 && <em className="muted-value">base</em>}
+      </div>)}
+      <div className="scenario-cell summary" role="cell">
+        <span className="scenario-move">Projected range</span>
+        <strong>{Math.min(...rows.map((row) => row.score))}–{Math.max(...rows.map((row) => row.score))}</strong>
+        <small>score spread</small>
+        <em className="muted-value">±20% move</em>
+      </div>
+    </div>
+    <div className="invalidation">
+      <span className="eyebrow">Invalidation levels</span>
+      <div>{levels.map((level) => <span className="level-chip" key={level.description} title={level.description}>{level.kind === "support" ? "Support" : "Invalidation"} <strong>${level.level.toFixed(2)}</strong></span>)}</div>
+      <p className="microcopy">Scenario values are arithmetic replays of the published score, not forecasts. The invalidation levels are moving averages a trader would watch, not stop-loss instructions.</p>
+    </div>
+  </div>;
+}
+
+function WatchToggle({ watched, onToggle, symbol }: { watched: boolean; onToggle: () => void; symbol: string }) {
+  return <button className={`watch-toggle ${watched ? "on" : ""}`} onClick={(event) => { event.stopPropagation(); onToggle(); }} aria-pressed={watched} aria-label={`${watched ? "Remove" : "Add"} ${symbol} ${watched ? "from" : "to"} watchlist`}>
+    <Star size={14} fill={watched ? "currentColor" : "none"} aria-hidden="true" />
+  </button>;
+}
+
+function StockRow({ stock, selected, watched, onSelect, onSort, onToggleWatch, relative }: { stock: StockSnapshot; selected: boolean; watched: boolean; onSelect: () => void; onSort: (key: SortKey) => void; onToggleWatch: () => void; relative?: RelativeStrength }) {
   return <tr className={selected ? "selected" : ""} onClick={onSelect} tabIndex={0} onKeyDown={(event) => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(); }
   }}>
-    <td><button className="stock-identity" onClick={onSelect} aria-label={`Inspect ${stock.symbol}`}><span className="ticker">{stock.symbol}</span><span className="company">{stock.name}</span></button></td>
+    <td><div className="identity-cell"><WatchToggle watched={watched} onToggle={onToggleWatch} symbol={stock.symbol} /><button className="stock-identity" onClick={onSelect} aria-label={`Inspect ${stock.symbol}`}><span className="ticker">{stock.symbol}</span><span className="company">{stock.name}</span></button></div></td>
     <td><span className="sector-label">{stock.assetClass}</span></td>
     <td className="numeric">{currency.format(stock.price)}</td>
     <td className="numeric"><Delta value={stock.changePercent} /></td>
     <td className="numeric mobile-hide">{stock.volumeRatio.toFixed(1)}×</td>
     <td className="numeric mobile-hide">{stock.rsi.toFixed(0)}</td>
+    <RelativeStrengthCell entry={relative} />
     <td><Sparkline values={stock.history} positive={stock.changePercent >= 0} /></td>
     <td><button className="score-button" onClick={() => onSort("score")} aria-label={`Sort by ${stock.symbol} score`}><Score value={stock.score} /></button></td>
   </tr>;
 }
 
-function Methodology({ stock, scoutStatus, onScout, onClose }: { stock: StockSnapshot; scoutStatus: { state: "idle" | "sending" | "sent" | "error"; message?: string }; onScout: () => void; onClose: () => void }) {
+function Methodology({ stock, scoutStatus, onScout, onClose, recipient, onRecipient }: { stock: StockSnapshot; scoutStatus: { state: "idle" | "sending" | "sent" | "error"; message?: string }; onScout: () => void; onClose: () => void; recipient: string; onRecipient: (value: string) => void }) {
   return <section className="detail-panel panel" aria-label={`${stock.symbol} score explanation`}>
     <div className="panel-heading"><div><span className="eyebrow">Signal anatomy</span><h2>{stock.symbol} / {stock.name}</h2></div><button className="icon-button" onClick={onClose} aria-label="Close signal explanation"><X size={17} /></button></div>
     <div className="score-explainer"><Score value={stock.score} large /><div><strong>{stock.signal}</strong><p>Composite evidence, not a price prediction.</p></div></div>
     <Sparkline values={stock.history} positive={stock.changePercent >= 0} />
     <ul className="reason-list">{stock.reasons.map((reason) => <li key={reason.label}><span>{reason.label}</span><div className="reason-track"><i style={{ width: `${reason.value}%` }} /></div><strong>{reason.value}</strong></li>)}</ul>
-    <div className="scout-box"><div><span className="eyebrow">Scout deep analysis</span><p>Send a research memo from TapeScope to the operator. No order is placed.</p></div><button className="scout-button" onClick={onScout} disabled={scoutStatus.state === "sending"}>{scoutStatus.state === "sending" ? <LoaderCircle size={14} className="spin" /> : scoutStatus.state === "sent" ? <CheckCircle2 size={14} /> : <Mail size={14} />}{scoutStatus.state === "sending" ? "Preparing" : scoutStatus.state === "sent" ? "Sent" : "Email memo"}</button>{scoutStatus.message && <span className={`scout-status ${scoutStatus.state}`}>{scoutStatus.message}</span>}</div>
+    <ScenarioPlanner stock={stock} />
+    <div className="scout-box">
+      <div className="scout-head"><span className="eyebrow">Scout deep analysis</span><p>Send a research memo from TapeScope. No order is placed.</p></div>
+      <div className="control-group recipient-field"><label htmlFor="scout-recipient">Deliver memo to</label><input id="scout-recipient" type="email" value={recipient} onChange={(event) => onRecipient(event.target.value)} placeholder="you@example.com" aria-describedby="recipient-help" /></div>
+      <p id="recipient-help" className="microcopy">Saved on this device only. Leave blank to use the desk default.</p>
+      <button className="scout-button" onClick={onScout} disabled={scoutStatus.state === "sending"}>{scoutStatus.state === "sending" ? <LoaderCircle size={14} className="spin" /> : scoutStatus.state === "sent" ? <CheckCircle2 size={14} /> : <Mail size={14} />}{scoutStatus.state === "sending" ? "Preparing" : scoutStatus.state === "sent" ? "Sent" : "Email memo"}</button>
+      {scoutStatus.message && <span className={`scout-status ${scoutStatus.state}`}>{scoutStatus.message}</span>}
+    </div>
     <p className="detail-note">Weights: momentum 28%, 52-week proximity 20%, volume 18%, trend 14%, RSI 14%, valuation 6%. Signals refresh from public delayed market data when available.</p>
   </section>;
 }
@@ -129,6 +208,10 @@ export default function App() {
   const [selectedSymbol, setSelectedSymbol] = useState(fallbackStocks[0].symbol);
   const [showMethodology, setShowMethodology] = useState(false);
   const [scoutStatus, setScoutStatus] = useState<{ state: "idle" | "sending" | "sent" | "error"; message?: string }>({ state: "idle" });
+  const [watchlist, setWatchlist] = useState<string[]>(() => readWatchlist());
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
+  const [recipient, setRecipient] = useState<string>(() => readStored(RECIPIENT_KEY, ""));
+  const [relativeOnly, setRelativeOnly] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -141,15 +224,41 @@ export default function App() {
   useEffect(() => { void refresh(); }, []);
 
   const sectors = useMemo(() => ["All sectors", ...new Set(payload.stocks.map((stock) => stock.sector))], [payload.stocks]);
-  const visible = useMemo(() => filterStocks(payload.stocks, { query, sector, assetClass, minScore, maxPrice, sortKey }), [payload.stocks, query, sector, assetClass, minScore, maxPrice, sortKey]);
+  const relativeStrength = useMemo(() => computeRelativeStrength(payload.stocks), [payload.stocks]);
+  const leaders = useMemo(
+    () => [...relativeStrength.values()].filter((entry) => entry.excessReturn > 0).length,
+    [relativeStrength]
+  );
+  const visible = useMemo(() => {
+    const base = filterStocks(payload.stocks, { query, sector, assetClass, minScore, maxPrice, sortKey: sortKey === "relative" ? "score" : sortKey });
+    const scoped = watchlistOnly ? base.filter((stock) => watchlist.includes(stock.symbol)) : base;
+    if (sortKey === "relative") {
+      return [...scoped].sort((left, right) => (relativeStrength.get(right.symbol)?.excessReturn ?? -Infinity) - (relativeStrength.get(left.symbol)?.excessReturn ?? -Infinity));
+    }
+    return scoped;
+  }, [payload.stocks, query, sector, assetClass, minScore, maxPrice, sortKey, watchlistOnly, watchlist, relativeStrength]);
   const selected = payload.stocks.find((stock) => stock.symbol === selectedSymbol) ?? visible[0] ?? payload.stocks[0];
   const gainers = payload.stocks.filter((stock) => stock.changePercent > 0).length;
-  const leaders = payload.stocks.filter((stock) => stock.score >= 75).length;
+  const scoreLeaders = payload.stocks.filter((stock) => stock.score >= 75).length;
   const averageChange = payload.stocks.reduce((sum, stock) => sum + stock.changePercent, 0) / Math.max(1, payload.stocks.length);
   const strongest = [...payload.stocks].sort((left, right) => right.score - left.score)[0];
 
   function resetFilters() {
     setQuery(""); setSector("All sectors"); setAssetClass("All vehicles"); setMinScore(0); setMaxPrice(1500); setScoutStatus({ state: "idle" });
+    setWatchlistOnly(false); setRelativeOnly(false); setSortKey("score");
+  }
+
+  function toggleWatch(symbol: string) {
+    setWatchlist((current) => {
+      const next = current.includes(symbol) ? current.filter((item) => item !== symbol) : [...current, symbol];
+      writeStored(WATCHLIST_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function updateRecipient(value: string) {
+    setRecipient(value);
+    writeStored(RECIPIENT_KEY, value.trim());
   }
 
   function selectStock(stock: StockSnapshot) {
@@ -162,7 +271,7 @@ export default function App() {
     if (!selected || scoutStatus.state === "sending") return;
     setScoutStatus({ state: "sending" });
     try {
-      const response = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: selected.symbol, snapshot: selected }) });
+      const response = await fetch("/api/scout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: selected.symbol, snapshot: selected, recipient: recipient.trim() || undefined }) });
       const result = await response.json() as { ok?: boolean; message?: string };
       if (!response.ok || !result.ok) throw new Error(result.message ?? "Scout request failed");
       setScoutStatus({ state: "sent", message: `Memo queued for ${selected.symbol}.` });
@@ -189,13 +298,21 @@ export default function App() {
         <div className="safety-note"><ShieldCheck size={17} /><div><strong>Read-only research</strong><span>No orders, no brokerage connection.</span></div></div>
       </aside>
       <section className="results-panel panel" aria-labelledby="results-title">
-        <div className="results-header"><div><span className="eyebrow">Watchlist scan</span><h2 id="results-title">Strongest signals</h2></div><div className="result-count">{visible.length} of {payload.stocks.length} instruments</div></div>
-        <div className="table-wrap" aria-live="polite"><table><thead><tr><th>Instrument</th><th>Vehicle</th><th className="numeric">Price</th><th className="numeric">Today</th><th className="numeric mobile-hide">Volume</th><th className="numeric mobile-hide">RSI</th><th>Trend</th><th><button onClick={() => setSortKey("score")}>Score</button></th></tr></thead><tbody>{visible.map((stock) => <StockRow key={stock.symbol} stock={stock} selected={selected?.symbol === stock.symbol} onSelect={() => selectStock(stock)} onSort={setSortKey} />)}</tbody></table>{visible.length === 0 && <div className="empty-state"><SlidersHorizontal size={20} /><strong>No signals match</strong><span>Lower the score or price threshold.</span></div>}</div>
+        <div className="results-header"><div><span className="eyebrow">Watchlist scan</span><h2 id="results-title">Strongest signals</h2></div><div className="results-tools">
+          <button className={`chip-toggle ${watchlistOnly ? "on" : ""}`} onClick={() => setWatchlistOnly((value) => !value)} aria-pressed={watchlistOnly} disabled={watchlist.length === 0}>
+            <Star size={13} fill={watchlistOnly ? "currentColor" : "none"} aria-hidden="true" /> Watchlist {watchlist.length > 0 && <span className="chip-count">{watchlist.length}</span>}
+          </button>
+          <button className={`chip-toggle ${relativeOnly ? "on" : ""}`} onClick={() => { setRelativeOnly((value) => !value); setSortKey("relative"); }} aria-pressed={relativeOnly}>
+            <TrendingUp size={13} aria-hidden="true" /> Outperforming
+          </button>
+          <div className="result-count">{visible.length} of {payload.stocks.length} instruments</div>
+        </div></div>
+        <div className="table-wrap" aria-live="polite"><table><thead><tr><th>Instrument</th><th>Vehicle</th><th className="numeric">Price</th><th className="numeric">Today</th><th className="numeric mobile-hide">Volume</th><th className="numeric mobile-hide">RSI</th><th className="numeric mobile-hide"><button onClick={() => setSortKey("relative")}>vs {BENCHMARK_SYMBOL}</button></th><th>Trend</th><th><button onClick={() => setSortKey("score")}>Score</button></th></tr></thead><tbody>{visible.map((stock) => <StockRow key={stock.symbol} stock={stock} selected={selected?.symbol === stock.symbol} watched={watchlist.includes(stock.symbol)} onToggleWatch={() => toggleWatch(stock.symbol)} relative={relativeStrength.get(stock.symbol)} onSelect={() => selectStock(stock)} onSort={setSortKey} />)}</tbody></table>{visible.length === 0 && <div className="empty-state"><SlidersHorizontal size={20} /><strong>No signals match</strong><span>Lower the score or price threshold.</span></div>}</div>
       </section>
       <aside className="insight-rail">
-        <section className="pulse-panel panel" aria-labelledby="pulse-title"><div className="panel-heading"><div><span className="eyebrow">Market pulse</span><h2 id="pulse-title">Breadth</h2></div><BarChart3 size={18} /></div><div className="pulse-grid"><div><span>Advancing</span><strong>{number.format(gainers)}<small>/{payload.stocks.length}</small></strong></div><div><span>Avg move</span><strong className={averageChange >= 0 ? "positive" : "negative"}>{averageChange >= 0 ? "+" : ""}{averageChange.toFixed(2)}%</strong></div><div><span>Leading</span><strong>{leaders}</strong></div><div><span>Top signal</span><strong>{strongest?.symbol ?? "—"}</strong></div></div><div className="breadth-track" aria-label={`${gainers} of ${payload.stocks.length} instruments advancing`}><i style={{ width: `${(gainers / Math.max(1, payload.stocks.length)) * 100}%` }} /></div><p className="microcopy">Based on the loaded {payload.stocks.length}-instrument universe—not the full market.</p></section>
+        <section className="pulse-panel panel" aria-labelledby="pulse-title"><div className="panel-heading"><div><span className="eyebrow">Market pulse</span><h2 id="pulse-title">Breadth</h2></div><BarChart3 size={18} /></div><div className="pulse-grid"><div><span>Advancing</span><strong>{number.format(gainers)}<small>/{payload.stocks.length}</small></strong></div><div><span>Avg move</span><strong className={averageChange >= 0 ? "positive" : "negative"}>{averageChange >= 0 ? "+" : ""}{averageChange.toFixed(2)}%</strong></div><div><span>Leading</span><strong>{scoreLeaders}</strong></div><div><span>vs {BENCHMARK_SYMBOL}</span><strong className={leaders >= payload.stocks.length / 2 ? "positive" : "negative"}>{leaders}</strong></div><div><span>Top signal</span><strong>{strongest?.symbol ?? "—"}</strong></div></div><div className="breadth-track" aria-label={`${gainers} of ${payload.stocks.length} instruments advancing`}><i style={{ width: `${(gainers / Math.max(1, payload.stocks.length)) * 100}%` }} /></div><p className="microcopy">Based on the loaded {payload.stocks.length}-instrument universe—not the full market.</p></section>
         <VehicleSummary stocks={payload.stocks} />
-        {showMethodology && selected ? <Methodology stock={selected} scoutStatus={scoutStatus} onScout={() => void requestScout()} onClose={() => setShowMethodology(false)} /> : <section className="method-card panel"><span className="eyebrow">Transparent by design</span><h2>Every score opens up.</h2><p>Select any row to see the evidence components, then ask Scout for a deeper memo.</p><button className="primary-button" onClick={() => setShowMethodology(true)} disabled={!selected}><Sparkles size={14} /> Inspect {selected?.symbol ?? "signal"}</button><div className="formula">score = evidence × fit</div></section>}
+        {showMethodology && selected ? <Methodology stock={selected} scoutStatus={scoutStatus} onScout={() => void requestScout()} onClose={() => setShowMethodology(false)} recipient={recipient} onRecipient={updateRecipient} /> : <section className="method-card panel"><span className="eyebrow">Transparent by design</span><h2>Every score opens up.</h2><p>Select any row to see the evidence components, then ask Scout for a deeper memo.</p><button className="primary-button" onClick={() => setShowMethodology(true)} disabled={!selected}><Sparkles size={14} /> Inspect {selected?.symbol ?? "signal"}</button><div className="formula">score = evidence × fit</div></section>}
         <section className="disclaimer panel"><strong>Research tool, not advice.</strong><span>Public data may be delayed. Verify prices independently before acting. Scout never places trades.</span></section>
       </aside>
     </section>

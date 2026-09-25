@@ -29,7 +29,7 @@ The live adapter requests six months of daily history for a 15-symbol liquid uni
 
 ## HackYard Yard 3
 
-The implementation was written as fresh code in this repository. JHF's screener was used only as a behavioral reference for familiar market-data concepts; no JHF source files or assets were copied. The project is MIT licensed so the baseline source is public and reusable.
+The implementation was written as fresh code in this repository. A separately built screener was consulted only as a behavioral reference for familiar market-data concepts; no source files or assets from any other application were copied. The project is MIT licensed so the baseline source is public and reusable.
 
 ## Submission evidence
 

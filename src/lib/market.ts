@@ -1,5 +1,5 @@
 export type Signal = "Leading" | "Watch" | "Building";
-export type SortKey = "score" | "change" | "price" | "volume";
+export type SortKey = "score" | "change" | "price" | "volume" | "relative";
 export type AssetClass = "Equity" | "ETF" | "REIT ETF" | "Bond ETF" | "Commodity ETF";
 
 export interface ScoreReason {
@@ -225,7 +225,7 @@ async function fetchSeries(item: RawSeries, signal: AbortSignal): Promise<RawSer
 
 export async function loadMarketData(): Promise<MarketData> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 6500);
+  const timer = setTimeout(() => controller.abort(), 6500);
   try {
     const results = await Promise.allSettled(universe.map((item) => fetchSeries(item, controller.signal)));
     const live = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
@@ -267,15 +267,15 @@ export async function loadMarketData(): Promise<MarketData> {
   } catch {
     return { stocks: fallbackStocks, source: "fallback", updatedAt: new Date().toISOString(), message: "Live feed unavailable · showing timestamped demo data" };
   } finally {
-    window.clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 
 export interface FilterOptions {
-  query: string;
-  sector: string;
-  minScore: number;
-  maxPrice: number;
+  query?: string;
+  sector?: string;
+  minScore?: number;
+  maxPrice?: number;
   assetClass?: AssetClass | "All vehicles";
   sortKey?: SortKey;
 }
@@ -283,7 +283,15 @@ export interface FilterOptions {
 export function filterStocks(stocks: StockSnapshot[], options: FilterOptions): StockSnapshot[];
 export function filterStocks(stocks: StockSnapshot[], query: string, sector: string, minimumScore: number, maximumPrice: number): StockSnapshot[];
 export function filterStocks(stocks: StockSnapshot[], optionsOrQuery: FilterOptions | string, sector = "All sectors", minimumScore = 0, maximumPrice = Number.POSITIVE_INFINITY): StockSnapshot[] {
-  const options = typeof optionsOrQuery === "string" ? { query: optionsOrQuery, sector, minScore: minimumScore, maxPrice: maximumPrice } : optionsOrQuery;
+  const provided = typeof optionsOrQuery === "string" ? { query: optionsOrQuery, sector, minScore: minimumScore, maxPrice: maximumPrice } : optionsOrQuery;
+  const options = {
+    query: provided.query ?? "",
+    sector: provided.sector ?? "All sectors",
+    minScore: provided.minScore ?? 0,
+    maxPrice: provided.maxPrice ?? Number.POSITIVE_INFINITY,
+    assetClass: provided.assetClass,
+    sortKey: provided.sortKey
+  };
   const normalized = options.query.trim().toLowerCase();
   const filtered = stocks.filter((stock) => {
     const matchesQuery = !normalized || stock.symbol.toLowerCase().includes(normalized) || stock.name.toLowerCase().includes(normalized);
@@ -292,11 +300,16 @@ export function filterStocks(stocks: StockSnapshot[], optionsOrQuery: FilterOpti
   return options.sortKey ? sortStocks(filtered, options.sortKey) : filtered;
 }
 
-export function sortStocks(stocks: StockSnapshot[], key: SortKey = "score"): StockSnapshot[] {
+export function sortStocks(stocks: StockSnapshot[], key: SortKey = "score", relative?: Map<string, number>): StockSnapshot[] {
   return [...stocks].sort((left, right) => {
     if (key === "change") return right.changePercent - left.changePercent;
     if (key === "price") return right.price - left.price;
     if (key === "volume") return right.volumeRatio - left.volumeRatio;
+    if (key === "relative") {
+      const leftExcess = relative?.get(left.symbol) ?? Number.NEGATIVE_INFINITY;
+      const rightExcess = relative?.get(right.symbol) ?? Number.NEGATIVE_INFINITY;
+      return rightExcess - leftExcess;
+    }
     return right.score - left.score;
   });
 }

@@ -1,0 +1,21 @@
+Hi. This is TapeScope — a cross-asset signal desk I built in a single day.
+
+Most screeners force you to pick one universe. Stocks, or funds, or bonds, or commodities. You tab between them and lose the thread. TapeScope puts every financial vehicle on one screen, ranked by evidence, not hype.
+
+Look at the top. That's a live market tape. Twenty-one instruments, equities, index funds, a treasury bond ETF, a real estate fund, a gold fund. All scrolling on one line. Click any symbol and it opens.
+
+The center is the scan. Every row is a composite score from zero to a hundred, and the score is not a black box. Select a row and the evidence opens up: momentum, proximity to the fifty-two week high, volume participation, trend confirmation, RSI health, valuation. Six components, every one visible, every one weighted on screen.
+
+This is the part most screeners get wrong. They hand you a number and ask you to trust it. TapeScope shows its work.
+
+Here is what I added late. Relative strength. Every instrument is measured against SPY, not against nothing. A one percent move means something different in a software stock than it does in a bond ETF, and now you can see exactly how much.
+
+The watchlist persists in your browser, so your research survives a refresh.
+
+And the scenario planner. This is the same score model, recomputed at hypothetical prices. Minus twenty percent. Minus ten. Base. Plus twenty. You can see how quickly the score decays under stress, and where the evidence actually breaks. Notice it says invalidation levels, not stop losses. This is a research tool. It will never tell you what to buy.
+
+One more thing. Select any instrument and hit email memo. TapeScope runs a full research analysis through a model, applies a written rubric, renders it to PDF, and sends it to the address you choose. It never places an order. It never connects to a brokerage. It shows you the evidence, names the risk, and then gets out of the way.
+
+The data is public and delayed, and the interface says so. Every disclaimer is on screen, not buried in a footer.
+
+TapeScope. Signal, not noise. Read the full write-up on the HackYard submission page.

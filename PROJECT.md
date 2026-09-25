@@ -15,7 +15,7 @@ Build a polished, public, single-screen stock-research screener that ranks a bou
 - Entire experience lives in one view; no routes, pages, or back navigation.
 - Scrolling, filtering, selection, and in-place detail panels are allowed because they remain within the same view.
 - All application source code is original and written after the Yard #3 kickoff on 2026-09-21.
-- JHF is used only as a behavioral/product reference. No JHF source, credentials, private data, or production endpoint is copied.
+- Existing screener products are used only as behavioral/product reference. No third-party source, credentials, private data, or production endpoint is copied.
 - Final submission includes a public repository, public live demo, and demo video.
 
 ## Product
@@ -46,4 +46,4 @@ Build a polished, public, single-screen stock-research screener that ranks a bou
 - Deadline is hard; ship the smallest credible complete product before optional expansion.
 - The live-data adapter must fail visibly and safely rather than fabricate freshness.
 - The bundled snapshot is labeled with its actual capture time.
-- No financial account, secret, or private JHF dependency may enter the public repository.
+- No financial account, secret, or private third-party dependency may enter the public repository.

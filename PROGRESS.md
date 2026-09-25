@@ -1,62 +1,72 @@
-# Operator continuation — terminal polish (2026-09-25)
+# TapeScope — Hack Yard 3 Submission Build
 
 status: in_progress
 watchdog: active
 
-- [ ] Inspect and preserve the current TapeScope baseline
-- [ ] Add a top market tape and terminal-style vehicle coverage
-- [ ] Add a guarded Scout deep-analysis email flow from TapeScope
-- [ ] Add tests, build, deploy, and verify the live route
+Live URL: https://yard3-signal-screener-live-marlandoj.zocomputer.io
+Service: svc_TzfmetZc0ns (yard3-signal-screener-live), local port 5187, workdir /home/workspace/Projects/yard3-signal-screener-live
 
-# TapeScope — HackYard Yard 3 Progress
+## Done and verified
 
-status: in_progress
-watchdog: active
-deadline: 2026-09-25T11:00:00-07:00
-updated: 2026-09-25T04:48:00-07:00
+- [x]  Rebuilt on a new tree at `Projects/yard3-signal-screener-live` (the prior `yard3-signal-screener` tree is kept untouched as the checkpoint)
 
-## Objective
+- [x]  Scoping scrub: zero references to JHF / Aventurine anywhere in server.ts, src/, index.html (verified by grep)
 
-Ship a one-screen, read-only stock screener that adheres to HackYard Yard 3's build-window rule: all implementation code is authored during Sept 21–25, 2026. JHF is behavioral reference only; no JHF source is copied.
+- [x]  Vendor-neutral scoring rubric vendored into `file src/lib/scout-rubric.ts`; server and tests no longer reach outside the project
 
-## Scope
+- [x]  Relative strength: `vsSpy` column computed against SPY, sortable (`SortKey` gained `relative`)
 
-- [x] Verify Yard 3 rules and deadline
-- [x] Create project baseline and planning contract
-- [x] Install UX review laws
-- [x] Implement deterministic scoring and fixture-backed tests
-- [x] Implement one-screen responsive UI
-- [x] Add live-data adapter with timestamped fallback
-- [x] Run typecheck, tests, and production build
-- [ ] Publish the initial public repository
-- [ ] Resolve shadow-mode web specialist
-- [ ] Run browser verification and capture desktop/mobile evidence
-- [ ] Add HackYard submission notes and demo script
-- [ ] Publish live site and verify production URL
-- [ ] Commit final evidence and close
+- [x]  Watchlist persistence in localStorage with star toggle per row, plus a Watchlist filter toggle
 
-## Acceptance
+- [x]  Scrolling market tape: two-pass marquee across the top, seamless loop, pauses on hover/focus, respects reduced motion, selects an instrument
 
-- The whole workflow fits on one screen at 1440×900 and remains usable at 390×844.
-- Filter, sort, row selection, score explanation, and data freshness work without a page reload.
-- Every displayed rank is reproducible from the visible score model.
-- Source status is explicit: live, delayed, or timestamped fixture.
-- No trade execution, recommendation, portfolio sizing, or stop-loss claim is presented.
-- Public source, setup instructions, tests, and submission notes are present.
+- [x]  Scenario planner: 2x2 of -20/-10/-5/0/+5/+10/+20 %, recomputed score, invalidation levels from SMA20/SMA50, explicitly labelled as arithmetic replays not forecasts
 
-## Constraints
+- [x]  Operator-selectable Scout delivery email, default blank in the UI, server-side validation, never hardcoded
 
-- No JHF source copied.
-- No secrets in the browser bundle or repository.
-- No mobile specialist role: mobile is not an explicit product capability.
-- Direct-build admission is currently held by four retained maintenance workspaces; build in the canonical project directory without deleting uncertain workspaces.
+- [x]  Boot-time env loader (`loadEnvFiles`) so the supervised service picks up `/root/.zo_secrets` and `.env.local`; values never logged
 
-## Current evidence
+- [x]  AgentMail delivery path; inbox resolved by name; PDF attached; temp dir cleaned in `finally`
 
-- Yard 3 page fetched and saved locally.
-- JHF page and StockScreener reference inspected.
-- Linear project: https://linear.app/marlandoj/project/hackyard-yard-3-5d8e5b7a68d1
-- Linear issue: https://linear.app/marlandoj/issue/ZOC-162/tapescope-one-screen-read-only-stock-screener
-- `bun run check`: passed
-- `bun run test`: 3/3 passed
-- `bun run build`: passed
+- [x]  `file src/lib/market.ts` made runtime-agnostic (no `window`/`location` at module scope) so it runs under Bun
+
+- [x]  typecheck clean, 17/17 tests pass, production build succeeds
+
+- [x]  UI verified in browser at 1280x720: no overflow, tape animating, scenario planner renders, recipient field present
+
+## Verified by test
+
+- `/api/health` returns ok
+- `/api/scout` dryRun returns `mode: scout-model` (live model call, \~27s)
+- Bad recipient returns HTTP 400 `Enter a valid delivery email address.`
+
+## Verified since the last checkpoint
+
+- [x] Live Scout send to the default recipient `marlandoj@gmail.com` returned HTTP 200 with `delivery.recipient` and `delivery.sender: tapescope@agents.zouroboros.ai` (NVDA, real model path)
+
+- [x] Live Scout send to an operator-supplied address returned HTTP 200 and delivered to that address, not the default (GLD to `review@tapescope.dev`) — NOTE: that test address is real; use a @agents.zouroboros.ai or operator address for any further test sends
+
+- [x] Invalid recipient returns HTTP 400 `Enter a valid delivery email address.`
+
+- [x] `window.setTimeout` in `loadMarketData` replaced with `setTimeout` so the market module truly runs under Bun
+
+- [x] Screen-capture script `file submission/capture.sh`; 8 shots in `submission/shots/`
+
+- [x] Service restarted; live URL serving the new build
+
+## In flight
+
+- [ ] HeyGen avatar render. `file submission/render-avatar.sh` (pid detached), log at `submission/render.log`, session at `file submission/heygen-session.json` (still empty at last read). Re-checking the log is the only thing needed to know if it finished.
+
+## Next
+
+1. Poll `submission/render.log` for the HeyGen video URL; download the MP4
+2. Composite: screen capture in `submission/shots/` + avatar in a circular window at lower-right, narration = `file submission/heygen-narration.txt`
+3. If the HeyGen render fails, fall back to `Skills/academy-video-pipeline` (local headless Chrome + ffmpeg, avatar as a static portrait circle) so a video still lands
+4. Confirm the scout email landed in the operator inbox independently of the API response
+
+## Notes for the next session
+
+- `bun run check` uses `tsc -b` and caches; run it before concluding anything is broken
+- The supervised service is `bun run serve`; env comes from the in-process loader, NOT from env_vars
+- Do not reintroduce absolute paths outside the project directory

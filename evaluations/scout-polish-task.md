@@ -8,7 +8,7 @@ Polish the existing TapeScope Yard #3 screener into a single-screen cross-asset 
 - Keep or improve the scrolling market tape across equities, ETFs, bonds, REITs, and commodities.
 - Make the cross-asset vehicle summary useful in one pane.
 - Add a Bloomberg-terminal-inspired information hierarchy without copying proprietary branding or code.
-- Integrate the governed `jhf-strategy-scout` rubric and its `scout-data.ts` data collection when credentials are available.
+- Integrate the governed strategy-scout rubric and the market snapshot data already collected by the screener.
 - Allow an operator-triggered, case-specific Scout memo to be delivered from `tapescope@agents.zouroboros.ai` with an HTML body and PDF attachment.
 - Never place trades, infer missing news, expose credentials, or send analysis without an explicit user action/approval.
 

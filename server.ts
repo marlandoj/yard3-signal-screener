@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs
 import { join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { fallbackStocks, type StockSnapshot } from "./src/lib/market";
+import { buildScoutPrompt, coerceScoutFields, SCOUT_OUTPUT_FIELDS, SCOUT_RUBRIC, type ScoutFields } from "./src/lib/scout-rubric";
 
 type BunFile = Blob & { exists: () => Promise<boolean> };
 type BunRuntime = {
@@ -23,10 +24,50 @@ type ScoutAnalysis = {
 };
 
 const runtime = (globalThis as typeof globalThis & { Bun: BunRuntime }).Bun;
-const port = Number(runtime.env.PORT ?? 5187);
+
+/**
+ * Load operator secrets at boot. The managed service runs `bun run serve`
+ * directly, so env files cannot be sourced by the entrypoint; load them here.
+ * Values are never logged. Already-set variables always win.
+ */
+/** A key counts as unset when absent or holding a placeholder, not a real value. */
+function isSet(key: string) {
+  const value = process.env[key];
+  return Boolean(value) && value !== "none" && value !== "null" && value !== "undefined";
+}
+
+function loadEnvFiles() {
+  for (const path of ["/root/.zo_secrets", join(import.meta.dir, ".env.local")]) {
+    if (!existsSync(path)) continue;
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (!match) continue;
+      const [, key, rawValue] = match;
+      if (isSet(key)) continue;
+      process.env[key] = rawValue.replace(/^["']|["']$/g, "");
+    }
+  }
+}
+loadEnvFiles();
+
+/** Read a variable from the live process env, falling back to the Bun snapshot. */
+function env(name: string) {
+  return process.env[name] ?? runtime.env[name];
+}
+
+const port = Number(env("PORT") ?? 5187);
 const root = join(import.meta.dir, "dist");
-const recipient = "marlandoj@gmail.com";
 const sender = "tapescope@agents.zouroboros.ai";
+/** Fallback destination when the operator leaves the delivery field blank. */
+const defaultRecipient = "marlandoj@gmail.com";
+const emailPattern = /^[^@\s]+@[^@\s.]+\.[A-Za-z]{2,}$/;
+
+function normaliseRecipient(value: unknown) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!emailPattern.test(trimmed) || trimmed.length > 254) return null;
+  return trimmed;
+}
 const scoutModel = "byok:dbce4b53-28f2-4a4d-ada2-30326765d57b";
 const requestLog = new Map<string, number[]>();
 const contentTypes: Record<string, string> = {
@@ -72,13 +113,14 @@ function buildPrompt(symbol: string, snapshot: StockSnapshot) {
     sma20: snapshot.sma20,
     sma50: snapshot.sma50,
     week52High: snapshot.week52High,
+    averageVolume: snapshot.averageVolume,
     score: snapshot.score,
     signal: snapshot.signal,
-    reasons: snapshot.reasons,
+    reasons: snapshot.reasons.map((reason) => `${reason.label} ${reason.value}%`),
     updatedAt: snapshot.updatedAt,
     history: snapshot.history.slice(-28)
   };
-  return `You are TapeScope Scout, a careful market research analyst. Read and apply the rubric in /home/workspace/Projects/zouroboros/Skills/jhf-strategy-scout/SKILL.md and /home/workspace/Projects/zouroboros/Skills/jhf-strategy-scout/references/verdict-rubric.md. Analyze the supplied ${symbol} snapshot for a single-screen research desk. This is analysis only: do not place orders, claim certainty, invent news, or give personalized financial advice. Explain what the evidence supports, what it does not support, the key risks, and levels a trader would monitor next. Use the exact JSON output schema requested. Keep each field concise and evidence-based. Snapshot: ${JSON.stringify(compact)}`;
+  return buildScoutPrompt(symbol, compact);
 }
 
 function rulesFallbackAnalysis(snapshot: StockSnapshot): ScoutAnalysis {
@@ -92,7 +134,7 @@ function rulesFallbackAnalysis(snapshot: StockSnapshot): ScoutAnalysis {
     riskFlags: snapshot.assetClass === "Equity" ? "Single-name equity risk remains material: gap risk, earnings events, and sector concentration can overwhelm a technical signal. Do not infer a target price or position size from this screen." : `${snapshot.assetClass} exposure is not the same as a single stock: check duration, tracking error, liquidity, and the underlying index before drawing conclusions.`,
     watchLevels: `Monitor the 20-period average ($${snapshot.sma20.toFixed(2)}), 50-period average ($${snapshot.sma50.toFixed(2)}), and the observed six-month high ($${snapshot.week52High.toFixed(2)}). A trader should confirm the next move with volume and a fresh catalyst rather than treating the score as a standalone trigger.`,
     verdict: `Evidence grade: ${trend}; research posture: monitor for confirmation. TapeScope does not place orders or provide personalized advice.`,
-    sources: `TapeScope market adapter (${snapshot.updatedAt}); score model in src/lib/market.ts; Scout rubric at /home/workspace/Projects/zouroboros/Skills/jhf-strategy-scout/references/verdict-rubric.md.`
+    sources: `TapeScope market adapter (${snapshot.updatedAt}); score model in src/lib/market.ts; Scout rubric in src/lib/scout-rubric.ts.`
   };
 }
 
@@ -107,50 +149,33 @@ function fallbackAnalysis(snapshot: StockSnapshot): ScoutAnalysis {
     riskFlags: `${snapshot.assetClass} / ${snapshot.vehicle} exposure can carry sector, duration, rate, commodity, and concentration risks that are not visible in this single snapshot. The tape is delayed and the data adapter may be incomplete.`,
     watchLevels: `Monitor the 20-day and 50-day moving averages, the 52-week high near $${snapshot.week52High.toFixed(2)} (${distanceToHigh.toFixed(1)}% from current), and volume relative to the ${snapshot.averageVolume.toLocaleString()} average. Confirm the setup with independent research before acting.`,
     verdict: `Rules-based evidence is ${trend}; verify with current news, filings, liquidity, and risk limits before making any decision.`,
-    sources: "TapeScope delayed market snapshot and Yahoo Finance historical data adapter. Fallback generated from the jhf-strategy-scout rubric; no news or order data is inferred."
+    sources: "TapeScope delayed market snapshot and Yahoo Finance historical data adapter. Fallback generated from the Scout rubric in src/lib/scout-rubric.ts; no news or order data is inferred."
   };
 }
 
 async function runScout(symbol: string, snapshot: StockSnapshot): Promise<ScoutAnalysis> {
-  const token = runtime.env.ZO_CLIENT_IDENTITY_TOKEN ?? runtime.env.ZO_API_KEY ?? runtime.env.JHF_ZO_API_KEY;
+  const token = env("TAPESCOPE_SCOUT_TOKEN") ?? env("ZO_CLIENT_IDENTITY_TOKEN") ?? env("ZO_API_KEY");
   if (!token) return fallbackAnalysis(snapshot);
-  const base = runtime.env.ZO_API_BASE ?? "https://api.zo.computer";
+  const base = env("ZO_API_BASE") ?? "https://api.zo.computer";
   const response = await fetch(`${base}/zo/ask`, {
     method: "POST",
     headers: { authorization: token, "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      input: buildPrompt(symbol, snapshot),
-      model_name: scoutModel,
-      output_format: {
-        type: "object",
-        properties: {
-          executiveSummary: { type: "string" },
-          technicalRead: { type: "string" },
-          riskFlags: { type: "string" },
-          watchLevels: { type: "string" },
-          verdict: { type: "string" },
-          sources: { type: "string" }
-        },
-        required: ["executiveSummary", "technicalRead", "riskFlags", "watchLevels", "verdict", "sources"]
-      }
-    })
+    body: JSON.stringify({ input: buildPrompt(symbol, snapshot), model_name: scoutModel })
   });
   if (!response.ok) throw new Error(`Scout model returned ${response.status}`);
   const payload = await response.json() as { output?: unknown };
-  let output = payload.output;
-  if (typeof output === "string") {
-    try { output = JSON.parse(output); } catch { throw new Error("Scout model returned an unreadable report"); }
-  }
-  if (!output || typeof output !== "object") throw new Error("Scout model returned no report");
-  const value = output as Record<string, unknown>;
+  if (typeof payload.output !== "string" || !payload.output.trim()) throw new Error("Scout model returned no report");
+  const fields: ScoutFields = coerceScoutFields(payload.output, rulesFallbackAnalysis(snapshot) as unknown as Partial<ScoutFields>);
+  const blank = Object.values(fields).every((value) => !value.trim());
+  if (blank) throw new Error("Scout model returned an unreadable report");
   return {
     mode: "scout-model",
-    executiveSummary: clean(value.executiveSummary, "No executive summary returned.", 1400),
-    technicalRead: clean(value.technicalRead, "No technical read returned.", 2200),
-    riskFlags: clean(value.riskFlags, "No risk flags returned.", 1800),
-    watchLevels: clean(value.watchLevels, "No watch levels returned.", 1600),
-    verdict: clean(value.verdict, "Research verdict unavailable.", 700),
-    sources: clean(value.sources, "TapeScope delayed market snapshot; Yahoo Finance historical data adapter.", 1200)
+    executiveSummary: fields.EXECUTIVE_SUMMARY,
+    technicalRead: fields.TECHNICAL_READ,
+    riskFlags: fields.RISK_FLAGS,
+    watchLevels: fields.WATCH_LEVELS,
+    verdict: fields.VERDICT,
+    sources: fields.SOURCES
   };
 }
 
@@ -163,8 +188,8 @@ function reportHtml(snapshot: StockSnapshot, analysis: ScoutAnalysis, generatedA
   </style></head><body><p class="muted">TAPESCOPE / SCOUT RESEARCH DESK · ${escapeHtml(generatedAt)}</p><h1>${escapeHtml(snapshot.symbol)} — ${escapeHtml(snapshot.name)}</h1><p class="muted">${escapeHtml(snapshot.assetClass)} · ${escapeHtml(snapshot.vehicle)} · ${escapeHtml(snapshot.sector)}</p><table><tr><td>Signal</td><td>${escapeHtml(snapshot.signal)} / ${snapshot.score} of 100</td><td>Session move</td><td class="${changeClass}">${change}</td></tr><tr><td>Scout mode</td><td>${escapeHtml(analysis.mode === "scout-model" ? "Scout model + rubric" : "Rubric fallback")}</td><td>Snapshot</td><td>${escapeHtml(snapshot.updatedAt)}</td></tr><tr><td>Price</td><td>$${snapshot.price.toFixed(2)}</td><td>RSI</td><td>${snapshot.rsi.toFixed(0)}</td></tr><tr><td>20 / 50 SMA</td><td>${snapshot.sma20.toFixed(2)} / ${snapshot.sma50.toFixed(2)}</td><td>52-week high</td><td>${snapshot.week52High.toFixed(2)}</td></tr></table><h2>Executive summary</h2><p>${escapeHtml(analysis.executiveSummary)}</p><h2>Technical read</h2><p>${escapeHtml(analysis.technicalRead)}</p><h2>Risk flags</h2><p>${escapeHtml(analysis.riskFlags)}</p><h2>Levels to monitor</h2><p>${escapeHtml(analysis.watchLevels)}</p><h2>Research verdict</h2><p>${escapeHtml(analysis.verdict)}</p><h2>Evidence and sources</h2><p>${escapeHtml(analysis.sources)}</p><p class="muted">Snapshot timestamp: ${escapeHtml(snapshot.updatedAt)}. Public data may be delayed. This report is for research and education only; it is not a recommendation or an instruction to trade.</p><p class="footer">Sent by TapeScope from ${escapeHtml(sender)}. No brokerage connection or order execution is used.</p></body></html>`;
 }
 
-async function sendReport(snapshot: StockSnapshot, analysis: ScoutAnalysis) {
-  const apiKey = runtime.env.AGENTMAIL_API_KEY;
+async function sendReport(snapshot: StockSnapshot, analysis: ScoutAnalysis, recipient: string) {
+  const apiKey = env("AGENTMAIL_API_KEY");
   if (!apiKey) throw new Error("AgentMail is not configured");
   const generatedAt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Phoenix", dateStyle: "medium", timeStyle: "short" }).format(new Date());
   const html = reportHtml(snapshot, analysis, `${generatedAt} Arizona`);
@@ -223,16 +248,22 @@ function parseSnapshot(value: unknown): StockSnapshot | null {
 
 async function handleScout(request: Request) {
   if (request.method !== "POST") return json({ error: "POST required" }, 405);
-  let body: { symbol?: unknown; snapshot?: unknown; dryRun?: unknown };
-  try { body = await request.json() as { symbol?: unknown; snapshot?: unknown; dryRun?: unknown }; } catch { return json({ error: "Invalid JSON body" }, 400); }
+  let body: { symbol?: unknown; snapshot?: unknown; dryRun?: unknown; recipient?: unknown };
+  try { body = await request.json() as { symbol?: unknown; snapshot?: unknown; dryRun?: unknown; recipient?: unknown }; } catch { return json({ error: "Invalid JSON body" }, 400); }
   const symbol = typeof body.symbol === "string" ? body.symbol.trim().toUpperCase() : "";
   const snapshot = parseSnapshot(body.snapshot);
   if (!symbol || !snapshot || snapshot.symbol !== symbol) return json({ error: "Unknown symbol" }, 400);
+  const supplied = normaliseRecipient(body.recipient);
+  if (body.recipient !== undefined && body.recipient !== null && !supplied) return json({ error: "Enter a valid delivery email address." }, 400);
+  const recipient = supplied ?? defaultRecipient;
   if (rateLimited(request)) return json({ error: "Scout delivery is rate-limited to five requests per hour." }, 429);
   try {
-    const analysis = await runScout(symbol, snapshot).catch(() => fallbackAnalysis(snapshot));
+    const analysis = await runScout(symbol, snapshot).catch((error) => {
+      console.error(`[scout] model path failed for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+      return fallbackAnalysis(snapshot);
+    });
     if (body.dryRun === true) return json({ ok: true, dryRun: true, symbol, analysis });
-    const delivery = await sendReport(snapshot, analysis);
+    const delivery = await sendReport(snapshot, analysis, recipient);
     return json({ ok: true, symbol, delivery, message: `Deep analysis sent to ${delivery.recipient}.` });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Scout delivery failed";
