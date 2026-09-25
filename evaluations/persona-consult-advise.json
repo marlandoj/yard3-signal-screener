@@ -1,0 +1,64 @@
+{
+  "templateReference": "web-app@1.0.0",
+  "associationVersion": "1.2.0",
+  "associationSha256": "4ee4adf9cfd78ac5f104a5fbdd2a0bad4f6cbc3ac28b6528f89109d0f9a89b83",
+  "omittedRoles": [
+    {
+      "roleId": "mobile-experience-reviewer",
+      "reason": "capability-mismatch"
+    }
+  ],
+  "result": {
+    "ok": true,
+    "mode": "shadow",
+    "phase": "advise",
+    "directorySnapshotHash": "7f50226e223331cc783802c3a33b5181125c3fe52c634c64d0b17b5f0434248f",
+    "evidence": [
+      {
+        "roleId": "accessibility-reviewer",
+        "phase": "advise",
+        "required": false,
+        "personaName": "Accessibility Specialist",
+        "personaId": null,
+        "status": "omitted",
+        "modelName": null,
+        "promptSha256": null,
+        "outputSha256": null,
+        "output": null,
+        "costUsd": null,
+        "verdict": null,
+        "summary": null,
+        "modelVendor": null,
+        "implementerModelName": null,
+        "implementerVendor": null,
+        "distinctModel": null,
+        "vendorDiverse": null,
+        "reason": "Persona \"Accessibility Specialist\" not found in directory"
+      },
+      {
+        "roleId": "frontend-developer",
+        "phase": "advise",
+        "required": true,
+        "personaName": "Frontend Developer",
+        "personaId": "2bf315cc-df19-4ab8-a756-b9521f954c38",
+        "status": "would_invoke",
+        "modelName": "zo:openai/gpt-6-luna",
+        "promptSha256": null,
+        "outputSha256": null,
+        "output": null,
+        "costUsd": null,
+        "verdict": null,
+        "summary": null,
+        "modelVendor": "openai",
+        "implementerModelName": null,
+        "implementerVendor": null,
+        "distinctModel": null,
+        "vendorDiverse": null,
+        "reason": null
+      }
+    ],
+    "totalCostUsd": 0,
+    "blockedReason": null
+  },
+  "renderedOutput": ""
+}

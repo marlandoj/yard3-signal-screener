@@ -1,0 +1,15 @@
+{
+  "name": "yard3-signal-screener-live",
+  "local_port": 5187,
+  "entrypoint": "bun run dev -- --host 0.0.0.0 --port 5187",
+  "publish": {
+    "label": "yard3-signal-screener-live",
+    "type": "http",
+    "entrypoint": "bun run serve",
+    "published_port": 5187,
+    "env": {
+      "NODE_ENV": "production",
+      "AGENTMAIL_API_KEY": "@AGENTMAIL_API_KEY"
+    }
+  }
+}

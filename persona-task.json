@@ -1,0 +1,14 @@
+{
+  "taskId": "yard3-tapescope-20260925",
+  "taskType": "implement",
+  "authority": "advise-review-only",
+  "phases": ["advise", "review"],
+  "templateId": "web-app",
+  "templateVersion": "1.0.0",
+  "capabilities": ["web-ui", "accessibility"],
+  "ownedPaths": ["/home/workspace/Projects/yard3-signal-screener"],
+  "phase": "advise",
+  "mode": "shadow",
+  "personaDirectory": "live-list_personas-snapshot-required",
+  "notes": "The web-app association requires Frontend Developer and makes Accessibility Specialist optional. Mobile App Builder is excluded because mobile is not an explicit capability. Visible Alaric persona remains responsible for implementation."
+}
