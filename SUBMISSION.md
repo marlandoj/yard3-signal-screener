@@ -5,7 +5,7 @@
 **Demo (live):** https://yard3-signal-screener-live-marlandoj.zocomputer.io
 **Walkthrough video:** https://github.com/marlandoj/yard3-signal-screener/raw/main/submission/tapescope-walkthrough.mp4
 **Screenshot gallery (public):** https://marlandoj.zo.space/tapescope
-(`submission/tapescope-walkthrough.mp4` · 156 s · 1080p · 12.5 MB)
+(`file submission/tapescope-walkthrough.mp4` · 140 s · 1080p · 13.0 MB)
 
 ---
 
@@ -46,7 +46,7 @@ degrades to a labelled "no data" state rather than a fabricated number.
 
 ## 4. Architecture
 
-```
+```markdown
 src/App.tsx        320 lines   React UI: screener table, row detail, scenario planner, scout
 src/lib/market.ts  332 lines   fetch, cache, normalise, 6mo daily series
 src/lib/analysis.ts 86 lines   factor computation, composite score, relative strength
@@ -84,16 +84,21 @@ fully without them.
 | Hosting | Zo managed user service (public HTTP, port 5187, supervised, auto-restart) |
 | Browser capture | `agent-browser` CLI driving the **live** URL — every video frame is real product state, not a mockup |
 | Narration | HeyGen — script authored, TTS voice rendered, 8 scene clips muxed to the capture |
-| Video assembly | Python (`build-video.py`, `mux.py`) + ffmpeg/ffprobe for Ken Burns motion, circular-avatar PiP, A/V drift check (final drift 0.4 s over 156 s) |
+| Video assembly | Python (`file submission/build-video-avatar.py`) + ffmpeg/ffprobe for Ken Burns motion, lip-synced avatar panel, A/V drift check (final drift 0.03 s over 140 s) |
 
 ### Video composition disclosure
 
-HeyGen rendered the **voice** successfully. Its talking-head **video** render did not
-finish — it sat in `processing` for the full 40-minute wait and then failed to a
-terminal failure state. The walkthrough therefore composites a static circular
-portrait (lower right, ring-bordered) over the live capture, driven by the HeyGen
-voiceover. It is a portrait-in-a-circle, not a lip-synced avatar, and is presented
-that way rather than implied otherwise.
+The first render attempt failed with `MOVIO_PAYMENT_INSUFFICIENT_CREDIT` — the HeyGen
+wallet had no API credit available at the moment of submission, and the local 40-minute
+`--wait` expired before the terminal status was read, so the log reported a timeout
+rather than the real cause. The wallet was recharged and the render re-run.
+
+The walkthrough now composites a **lip-synced talking-head avatar** (lower right,
+ring-bordered, captioned) over the live capture, driven by the HeyGen voiceover.
+Avatar: `bc40317a44b445029f2c123a83be197a` ("Marlando the podcast host").
+Voice: `01528fb7edde4be7b224a1a145b0be34` ("Kevin Jackson", private clone).
+Scene cuts land on the silences detected in the rendered audio, so every caption
+changes on a spoken beat.
 
 ## 7. Verification performed
 

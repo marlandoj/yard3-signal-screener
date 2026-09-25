@@ -1,0 +1,8 @@
+1	01-opening	One screen. Every vehicle.	1.050	18.940
+2	08-vehicles	Live market tape	18.940	31.552
+3	05-methodology	Every component, visible	31.552	60.161
+4	04-relative-strength	Relative strength vs SPY	60.161	75.457
+5	02-watchlist-stars	Watchlist persists	75.457	80.321
+6	06-scenario-planner	Scenario planner	80.321	102.785
+7	07-scout-delivery	Scout research memo	102.785	124.034
+8	01-opening	Signal, not noise	124.034	136.770

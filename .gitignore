@@ -7,3 +7,11 @@ vite.config.d.ts
 .DS_Store
 
 .env.local
+
+# transient video build artifacts (regenerate with submission/build-video-avatar.py)
+submission/build/
+submission/build-avatar/
+submission/rebuild-avatar.log
+
+# zo progress-journal temp files (accidentally committed in 54efbba)
+.PROGRESS.md.__zo_*.tmp
